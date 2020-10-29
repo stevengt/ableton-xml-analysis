@@ -3,3 +3,5 @@
 *.alc
 *.als
 Backup/
+
+.ipynb_checkpoints
