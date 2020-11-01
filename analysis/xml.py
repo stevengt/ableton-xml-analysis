@@ -1,4 +1,6 @@
 
+import pandas as pd
+
 
 class DocumentInfo:
 
