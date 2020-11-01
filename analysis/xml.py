@@ -44,6 +44,20 @@ class DocumentInfo:
                 attributes.add(name)
         return attributes
 
+    def get_elements_grouped_by_attribute(self, attribute):
+        """
+        Returns a dictionary of element dataframes indexed by all unique
+        values of the specified attribute.
+        """
+        grouped_elements = {}
+        attribute_instances = self.attributes_df[self.attributes_df["name"] == attribute]
+        attribute_values = set(attribute_instances["value"].tolist())
+        for val in attribute_values:
+            element_indeces = attribute_instances[attribute_instances["value"] == val]["element index"]
+            elements = self.elements_df.iloc[element_indeces]
+            grouped_elements[val] = elements
+        return grouped_elements
+
     def _get_elements_df(self, etree_root):
 
         df = pd.DataFrame(columns=["etree node", "tag name", "content", "parent index"])
