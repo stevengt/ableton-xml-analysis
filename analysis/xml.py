@@ -8,6 +8,40 @@ class DocumentInfo:
         self.elements_df.drop("etree node", axis=1, inplace=True)
         self.root_element = self._get_element(0)
 
+    def get_all_element_tag_names(self, parent_tag_name=None):
+        """
+        Returns a set of all unique element tag names within the XML document.
+        If parent_tag_name is specified, then only the element tags that appear
+        with parents of that type are returned.
+        """
+        tags = set()
+        df = self.elements_df
+        if parent_tag_name is not None:
+            valid_parent_indeces = df[df["tag name"] == parent_tag_name].index
+            for i in valid_parent_indeces:
+                tags.update(df[df["parent index"] == i]["tag name"].tolist())
+        else:
+            tags.update(df["tag name"].tolist())
+        return tags
+
+    def get_all_attribute_names(self, element_tag_name=None):
+        """
+        Returns a set of all unique attribute names within the XML document.
+        If element_tag_name is specified, then only the attributes that appear
+        in elements of that type are returned.
+        """
+        attributes = set()
+        for index, attribute_row in self.attributes_df.iterrows():
+            name = attribute_row["name"]
+            if element_tag_name is not None:
+                element_index = attribute_row["element index"]
+                element = self.elements_df.iloc[element_index]
+                if element["tag name"] == element_tag_name:
+                    attributes.add(name)
+            else:
+                attributes.add(name)
+        return attributes
+
     def _get_elements_df(self, etree_root):
 
         df = pd.DataFrame(columns=["etree node", "tag name", "content", "parent index"])
