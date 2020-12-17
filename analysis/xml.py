@@ -44,7 +44,8 @@ class DocumentInfo:
                 attributes.add(name)
         return attributes
 
-    def get_elements_info_grouped_by_attribute(self, attribute, include_single_instances=False):
+    def get_elements_info_grouped_by_attribute(self, attribute, include_single_instances=False,
+                                               show_only_unique_tag_names=False):
         """
         Returns a dictionary that maps unique values of the specified attribute
         to a list of 'tag name' and 'id' values for elements containing an
@@ -52,7 +53,12 @@ class DocumentInfo:
 
         By default, any attribute values that correspond to a single element
         instance are not returned. To include these, set the include_single_instances
-        parameter to True .
+        parameter to True.
+
+        If show_only_unique_tag_names is set to True, then the lists corresponding
+        to each unique value of the specified attribute will contain only the unique
+        tag names among their element instances, instead of the 'tag name' and 'id'
+        of each instance.
         """
         grouped_elements_info = {}
         attribute_instances = self.attributes_df[self.attributes_df["name"] == attribute]
@@ -69,6 +75,9 @@ class DocumentInfo:
                     "tag name": self.elements_df.iloc[element_index]["tag name"],
                     "id": element_index
                 })
+
+            if show_only_unique_tag_names:
+                elements_info_list = list(set([element_info["tag name"] for element_info in elements_info_list]))
 
             grouped_elements_info[val] = elements_info_list
         return grouped_elements_info
