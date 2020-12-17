@@ -44,19 +44,34 @@ class DocumentInfo:
                 attributes.add(name)
         return attributes
 
-    def get_elements_grouped_by_attribute(self, attribute):
+    def get_elements_info_grouped_by_attribute(self, attribute, include_single_instances=False):
         """
-        Returns a dictionary of element dataframes indexed by all unique
-        values of the specified attribute.
+        Returns a dictionary that maps unique values of the specified attribute
+        to a list of 'tag name' and 'id' values for elements containing an
+        attribute with that value.
+
+        By default, any attribute values that correspond to a single element
+        instance are not returned. To include these, set the include_single_instances
+        parameter to True .
         """
-        grouped_elements = {}
+        grouped_elements_info = {}
         attribute_instances = self.attributes_df[self.attributes_df["name"] == attribute]
         attribute_values = set(attribute_instances["value"].tolist())
+
         for val in attribute_values:
-            element_indeces = attribute_instances[attribute_instances["value"] == val]["element index"]
-            elements = self.elements_df.iloc[element_indeces]
-            grouped_elements[val] = elements
-        return grouped_elements
+            element_indeces = attribute_instances[attribute_instances["value"] == val]["element index"].tolist()
+            if len(element_indeces) == 1 and not include_single_instances:
+                continue
+
+            elements_info_list = []
+            for element_index in element_indeces:
+                elements_info_list.append({
+                    "tag name": self.elements_df.iloc[element_index]["tag name"],
+                    "id": element_index
+                })
+
+            grouped_elements_info[val] = elements_info_list
+        return grouped_elements_info
 
     def _get_elements_df(self, etree_root):
 
