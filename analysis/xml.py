@@ -1,13 +1,16 @@
 
 import pandas as pd
-
+from dataframe_sql import register_temp_table, query
 
 class DocumentInfo:
 
     def __init__(self, etree_root):
         self.elements_df = self._get_elements_df(etree_root)
         self.attributes_df = self._get_attributes_df()
-        self.elements_df.drop("etree node", axis=1, inplace=True)
+        self.elements_df.drop("etree_node", axis=1, inplace=True)
+        register_temp_table(self.elements_df, "elements")
+        register_temp_table(self.attributes_df, "attributes")
+
         # self.root_element = self._get_element(0)
 
     def get_all_element_tag_names(self, parent_tag_name=None):
@@ -19,11 +22,11 @@ class DocumentInfo:
         tags = set()
         df = self.elements_df
         if parent_tag_name is not None:
-            valid_parent_indeces = df[df["tag name"] == parent_tag_name].index
+            valid_parent_indeces = df[df["tag_name"] == parent_tag_name].index
             for i in valid_parent_indeces:
-                tags.update(df[df["parent index"] == i]["tag name"].tolist())
+                tags.update(df[df["parent_id"] == i]["tag_name"].tolist())
         else:
-            tags.update(df["tag name"].tolist())
+            tags.update(df["tag_name"].tolist())
         return tags
 
     def get_all_attribute_names(self, element_tag_name=None):
@@ -36,9 +39,9 @@ class DocumentInfo:
         for index, attribute_row in self.attributes_df.iterrows():
             name = attribute_row["name"]
             if element_tag_name is not None:
-                element_index = attribute_row["element index"]
+                element_index = attribute_row["element_id"]
                 element = self.elements_df.iloc[element_index]
-                if element["tag name"] == element_tag_name:
+                if element["tag_name"] == element_tag_name:
                     attributes.add(name)
             else:
                 attributes.add(name)
@@ -48,7 +51,7 @@ class DocumentInfo:
                                                show_only_unique_tag_names=False):
         """
         Returns a dictionary that maps unique values of the specified attribute
-        to a list of 'tag name' and 'id' values for elements containing an
+        to a list of 'tag_name' and 'id' values for elements containing an
         attribute with that value.
 
         By default, any attribute values that correspond to a single element
@@ -57,7 +60,7 @@ class DocumentInfo:
 
         If show_only_unique_tag_names is set to True, then the lists corresponding
         to each unique value of the specified attribute will contain only the unique
-        tag names among their element instances, instead of the 'tag name' and 'id'
+        tag_names among their element instances, instead of the 'tag_name' and 'id'
         of each instance.
         """
         grouped_elements_info = {}
@@ -65,58 +68,60 @@ class DocumentInfo:
         attribute_values = set(attribute_instances["value"].tolist())
 
         for val in attribute_values:
-            element_indeces = attribute_instances[attribute_instances["value"] == val]["element index"].tolist()
+            element_indeces = attribute_instances[attribute_instances["value"] == val]["element_id"].tolist()
             if len(element_indeces) == 1 and not include_single_instances:
                 continue
 
             elements_info_list = []
             for element_index in element_indeces:
                 elements_info_list.append({
-                    "tag name": self.elements_df.iloc[element_index]["tag name"],
+                    "tag_name": self.elements_df.iloc[element_index]["tag_name"],
                     "id": element_index
                 })
 
             if show_only_unique_tag_names:
-                elements_info_list = list(set([element_info["tag name"] for element_info in elements_info_list]))
+                elements_info_list = list(set([element_info["tag_name"] for element_info in elements_info_list]))
 
             grouped_elements_info[val] = elements_info_list
         return grouped_elements_info
 
     def _get_elements_df(self, etree_root):
 
-        df = pd.DataFrame(columns=["etree node", "tag name", "content", "parent index"])
+        df = pd.DataFrame(columns=["etree_node", "tag_name", "content", "parent_id"])
 
         for node in etree_root.iter():
             df_row_dict = {
-                "etree node": node,
-                "tag name": node.tag,
+                "etree_node": node,
+                "tag_name": node.tag,
                 "content": node.text.strip() if node.text is not None and not node.text.isspace() else None,
-                "parent index": None
+                "parent_id": None
             }
             df = df.append(df_row_dict, ignore_index=True)
 
-        df["parent index"] = df["etree node"].apply(lambda node: self._get_parent_index_from_etree_node(df, node)) \
+        df["parent_id"] = df["etree_node"].apply(lambda node: self._get_parent_index_from_etree_node(df, node)) \
                                              .astype("Int64")
 
+        df["id"] = df.index
         return df
 
     def _get_attributes_df(self):
 
-        df = pd.DataFrame(columns=["name", "value", "element index"])
+        df = pd.DataFrame(columns=["name", "value", "element_id"])
 
         for element_index, element_row in self.elements_df.iterrows():
-            for name, value in element_row["etree node"].attrib.items():
+            for name, value in element_row["etree_node"].attrib.items():
                 df_row_dict = {
                     "name": name,
                     "value": value,
-                    "element index": element_index
+                    "element_id": element_index
                 }
                 df = df.append(df_row_dict, ignore_index=True)
 
+        df["id"] = df.index
         return df
 
     def _get_parent_index_from_etree_node(self, df, node):
-        is_parent_node = df["etree node"] == node.getparent()
+        is_parent_node = df["etree_node"] == node.getparent()
         parent_indeces = df.index[is_parent_node].tolist()
         num_parents = len(parent_indeces)
         if num_parents == 0:
@@ -130,11 +135,11 @@ class DocumentInfo:
     #     if id is None:
     #         return None
     #     element_row = self.elements_df.iloc[id]
-    #     name = element_row["tag name"]
+    #     name = element_row["tag_name"]
     #     content = element_row["content"]
-    #     attribute_rows = self.attributes_df[self.attributes_df["element index"] == id]
+    #     attribute_rows = self.attributes_df[self.attributes_df["element_id"] == id]
     #     attributes = {row["name"]: row["value"] for i, row in attribute_rows.iterrows()}
-    #     child_indeces = self.elements_df[self.elements_df["parent index"] == id].index.tolist()
+    #     child_indeces = self.elements_df[self.elements_df["parent_id"] == id].index.tolist()
     #     children = [self._get_element(child_id) for child_id in child_indeces]
     #     element = ElementInfo(id, name, attributes, children)
     #     for child in element.children():
