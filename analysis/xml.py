@@ -14,6 +14,21 @@ class DocumentInfo:
         # self.root_element = self._get_element(0)
 
     def query(self, sql):
+        """
+        CREATE TABLE "ELEMENTS" (
+            "ID" INTEGER,
+            "PARENT_ID" INTEGER,
+            "TAG_NAME" TEXT,
+            "CONTENT" TEXT
+        );
+
+        CREATE TABLE "ATTRIBUTES" (
+            "ID" INTEGER,
+            "ELEMENT_ID" INTEGER,
+            "NAME" TEXT,
+            "VALUE" TEXT
+        );
+        """
         return sqldf(sql, self._dataframes)
 
     def get_all_element_tag_names(self, parent_tag_name=None):
@@ -97,14 +112,14 @@ class DocumentInfo:
 
     def _get_elements_df(self, etree_root):
 
-        df = pd.DataFrame(columns=["ETREE_NODE", "TAG_NAME", "CONTENT", "PARENT_ID"])
+        df = pd.DataFrame(columns=["ID", "PARENT_ID", "ETREE_NODE", "TAG_NAME", "CONTENT"])
 
         for node in etree_root.iter():
             df_row_dict = {
+                "PARENT_ID": None,
                 "ETREE_NODE": node,
                 "TAG_NAME": node.tag,
-                "CONTENT": node.text.strip() if node.text is not None and not node.text.isspace() else None,
-                "PARENT_ID": None
+                "CONTENT": node.text.strip() if node.text is not None and not node.text.isspace() else None
             }
             df = df.append(df_row_dict, ignore_index=True)
 
@@ -116,14 +131,14 @@ class DocumentInfo:
 
     def _get_attributes_df(self, elements_df):
 
-        df = pd.DataFrame(columns=["NAME", "VALUE", "ELEMENT_ID"])
+        df = pd.DataFrame(columns=["ID", "ELEMENT_ID", "NAME", "VALUE"])
 
         for element_index, element_row in elements_df.iterrows():
             for name, value in element_row["ETREE_NODE"].attrib.items():
                 df_row_dict = {
+                    "ELEMENT_ID": element_index,
                     "NAME": name,
-                    "VALUE": value,
-                    "ELEMENT_ID": element_index
+                    "VALUE": value
                 }
                 df = df.append(df_row_dict, ignore_index=True)
 
