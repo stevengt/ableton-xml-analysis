@@ -22,15 +22,16 @@ class DocumentInfo:
         If parent_tag_name is specified, then only the element tags that appear
         with parents of that type are returned.
         """
-        tags = set()
-        df = self._dataframes["ELEMENTS"]
+        sql_query = "SELECT DISTINCT TAG_NAME FROM ELEMENTS"
         if parent_tag_name is not None:
-            valid_parent_indeces = df[df["TAG_NAME"] == parent_tag_name].index
-            for i in valid_parent_indeces:
-                tags.update(df[df["PARENT_ID"] == i]["TAG_NAME"].tolist())
-        else:
-            tags.update(df["TAG_NAME"].tolist())
-        return tags
+            sql_query = f"""
+            SELECT DISTINCT E1.TAG_NAME
+            FROM ELEMENTS E1
+            LEFT JOIN ELEMENTS E2
+                ON E1.PARENT_ID = E2.ID
+            WHERE E2.TAG_NAME = '{parent_tag_name}'"""
+        tag_names = self.query(sql_query)["TAG_NAME"]
+        return set(tag_names)
 
     def get_all_attribute_names(self, element_tag_name=None):
         """
