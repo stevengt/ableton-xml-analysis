@@ -92,26 +92,37 @@ class DocumentInfo:
         tag_names among their element instances, instead of the 'TAG' and 'ELEMENT_ID'
         of each instance.
         """
+
+        attribute_instances = self.query(f"""
+                                          SELECT A.VALUE, E.TAG, E.ELEMENT_ID
+                                          FROM ATTRIBUTE A
+                                          LEFT JOIN ELEMENT E
+                                              ON A.ELEMENT_ID = E.ELEMENT_ID
+                                          WHERE A.NAME = '{attribute}'
+                                          """)
+
+        attribute_values = set(attribute_instances["VALUE"])
+
         grouped_elements_info = {}
-        attribute_instances = self._dataframes["ATTRIBUTE"][self._dataframes["ATTRIBUTE"]["NAME"] == attribute]
-        attribute_values = set(attribute_instances["VALUE"].tolist())
 
         for val in attribute_values:
-            element_indeces = attribute_instances[attribute_instances["VALUE"] == val]["ELEMENT_ID"].tolist()
-            if len(element_indeces) == 1 and not include_single_instances:
+
+            attribute_instances_with_val = attribute_instances[attribute_instances["VALUE"] == val]
+            if len(attribute_instances_with_val) == 1 and not include_single_instances:
                 continue
 
             elements_info_list = []
-            for element_index in element_indeces:
+            for _, attribute_instance in attribute_instances_with_val.iterrows():
                 elements_info_list.append({
-                    "TAG": self._dataframes["ELEMENT"].iloc[element_index]["TAG"],
-                    "ELEMENT_ID": element_index
+                    "TAG": attribute_instance["TAG"],
+                    "ELEMENT_ID": attribute_instance["ELEMENT_ID"]
                 })
 
             if show_only_unique_tag_names:
                 elements_info_list = list(set([element_info["TAG"] for element_info in elements_info_list]))
 
             grouped_elements_info[val] = elements_info_list
+
         return grouped_elements_info
 
     def _get_elements_and_attributes_dataframes(self, etree_root):
