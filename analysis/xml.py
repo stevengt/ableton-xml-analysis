@@ -46,12 +46,14 @@ class DocumentInfo:
         """
         sql_query = "SELECT DISTINCT TAG FROM ELEMENT"
         if parent_tag_name is not None:
-            sql_query = f"""
-            SELECT DISTINCT E1.TAG
-            FROM ELEMENT E1
-            LEFT JOIN ELEMENT E2
-                ON E1.PARENT_ID = E2.ELEMENT_ID
-            WHERE E2.TAG = '{parent_tag_name}'"""
+            sql_query = \
+                f"""
+                SELECT DISTINCT E1.TAG
+                FROM ELEMENT E1
+                LEFT JOIN ELEMENT E2
+                    ON E1.PARENT_ID = E2.ELEMENT_ID
+                WHERE E2.TAG = '{parent_tag_name}'
+                """
         tag_names = self.query(sql_query)["TAG"]
         return set(tag_names)
 
@@ -61,17 +63,18 @@ class DocumentInfo:
         If element_tag_name is specified, then only the attributes that appear
         in elements of that type are returned.
         """
-        attributes = set()
-        for index, attribute_row in self._dataframes["ATTRIBUTE"].iterrows():
-            name = attribute_row["NAME"]
-            if element_tag_name is not None:
-                element_index = attribute_row["ELEMENT_ID"]
-                element = self._dataframes["ELEMENT"].iloc[element_index]
-                if element["TAG"] == element_tag_name:
-                    attributes.add(name)
-            else:
-                attributes.add(name)
-        return attributes
+        sql_query = "SELECT DISTINCT NAME FROM ATTRIBUTE"
+        if element_tag_name is not None:
+            sql_query = \
+                f"""
+                SELECT DISTINCT A.NAME
+                FROM ATTRIBUTE A
+                LEFT JOIN ELEMENT E
+                    ON A.ELEMENT_ID = E.ELEMENT_ID
+                WHERE E.TAG = '{element_tag_name}'
+                """
+        attribute_names = self.query(sql_query)["NAME"]
+        return set(attribute_names)
 
     def get_elements_info_grouped_by_attribute(self, attribute, include_single_instances=False,
                                                show_only_unique_tag_names=False):
