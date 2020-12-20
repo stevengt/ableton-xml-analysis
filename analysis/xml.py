@@ -8,25 +8,32 @@ class DocumentInfo:
     def __init__(self, etree_root):
         elements_df, attributes_df = self._get_elements_and_attributes_dataframes(etree_root)
         self._dataframes = {
-            "ELEMENTS": elements_df,
-            "ATTRIBUTES": attributes_df
+            "ELEMENT": elements_df,
+            "ATTRIBUTE": attributes_df
         }
         # self.root_element = self._get_element(0)
 
     def query(self, sql):
         """
-        CREATE TABLE "ELEMENTS" (
-            "ID" INTEGER,
+        Returns a dataframe of results returned from executing the provided
+        SQL query against tables with the following schema.
+
+        CREATE TABLE "ELEMENT" (
+            "ELEMENT_ID" INTEGER,
             "PARENT_ID" INTEGER,
-            "TAG_NAME" TEXT,
-            "CONTENT" TEXT
+            "TAG" TEXT,
+            "CONTENT" TEXT,
+            PRIMARY KEY("ELEMENT_ID"),
+            FOREIGN KEY("PARENT_ID") REFERENCES "ELEMENT"("ELEMENT_ID")
         );
 
-        CREATE TABLE "ATTRIBUTES" (
-            "ID" INTEGER,
+        CREATE TABLE "ATTRIBUTE" (
+            "ATTRIBUTE_ID" INTEGER,
             "ELEMENT_ID" INTEGER,
             "NAME" TEXT,
-            "VALUE" TEXT
+            "VALUE" TEXT,
+            PRIMARY KEY("ATTRIBUTE_ID"),
+            FOREIGN KEY("ELEMENT_ID") REFERENCES "ELEMENT"("ELEMENT_ID")
         );
         """
         return sqldf(sql, self._dataframes)
@@ -37,15 +44,15 @@ class DocumentInfo:
         If parent_tag_name is specified, then only the element tags that appear
         with parents of that type are returned.
         """
-        sql_query = "SELECT DISTINCT TAG_NAME FROM ELEMENTS"
+        sql_query = "SELECT DISTINCT TAG FROM ELEMENT"
         if parent_tag_name is not None:
             sql_query = f"""
-            SELECT DISTINCT E1.TAG_NAME
-            FROM ELEMENTS E1
-            LEFT JOIN ELEMENTS E2
-                ON E1.PARENT_ID = E2.ID
-            WHERE E2.TAG_NAME = '{parent_tag_name}'"""
-        tag_names = self.query(sql_query)["TAG_NAME"]
+            SELECT DISTINCT E1.TAG
+            FROM ELEMENT E1
+            LEFT JOIN ELEMENT E2
+                ON E1.PARENT_ID = E2.ELEMENT_ID
+            WHERE E2.TAG = '{parent_tag_name}'"""
+        tag_names = self.query(sql_query)["TAG"]
         return set(tag_names)
 
     def get_all_attribute_names(self, element_tag_name=None):
@@ -55,12 +62,12 @@ class DocumentInfo:
         in elements of that type are returned.
         """
         attributes = set()
-        for index, attribute_row in self._dataframes["ATTRIBUTES"].iterrows():
+        for index, attribute_row in self._dataframes["ATTRIBUTE"].iterrows():
             name = attribute_row["NAME"]
             if element_tag_name is not None:
                 element_index = attribute_row["ELEMENT_ID"]
-                element = self._dataframes["ELEMENTS"].iloc[element_index]
-                if element["TAG_NAME"] == element_tag_name:
+                element = self._dataframes["ELEMENT"].iloc[element_index]
+                if element["TAG"] == element_tag_name:
                     attributes.add(name)
             else:
                 attributes.add(name)
@@ -70,7 +77,7 @@ class DocumentInfo:
                                                show_only_unique_tag_names=False):
         """
         Returns a dictionary that maps unique values of the specified attribute
-        to a list of 'TAG_NAME' and 'ID' values for elements containing an
+        to a list of 'TAG' and 'ELEMENT_ID' values for elements containing an
         attribute with that value.
 
         By default, any attribute values that correspond to a single element
@@ -79,11 +86,11 @@ class DocumentInfo:
 
         If show_only_unique_tag_names is set to True, then the lists corresponding
         to each unique value of the specified attribute will contain only the unique
-        tag_names among their element instances, instead of the 'TAG_NAME' and 'ID'
+        tag_names among their element instances, instead of the 'TAG' and 'ELEMENT_ID'
         of each instance.
         """
         grouped_elements_info = {}
-        attribute_instances = self._dataframes["ATTRIBUTES"][self._dataframes["ATTRIBUTES"]["NAME"] == attribute]
+        attribute_instances = self._dataframes["ATTRIBUTE"][self._dataframes["ATTRIBUTE"]["NAME"] == attribute]
         attribute_values = set(attribute_instances["VALUE"].tolist())
 
         for val in attribute_values:
@@ -94,12 +101,12 @@ class DocumentInfo:
             elements_info_list = []
             for element_index in element_indeces:
                 elements_info_list.append({
-                    "TAG_NAME": self._dataframes["ELEMENTS"].iloc[element_index]["TAG_NAME"],
-                    "ID": element_index
+                    "TAG": self._dataframes["ELEMENT"].iloc[element_index]["TAG"],
+                    "ELEMENT_ID": element_index
                 })
 
             if show_only_unique_tag_names:
-                elements_info_list = list(set([element_info["TAG_NAME"] for element_info in elements_info_list]))
+                elements_info_list = list(set([element_info["TAG"] for element_info in elements_info_list]))
 
             grouped_elements_info[val] = elements_info_list
         return grouped_elements_info
@@ -112,13 +119,13 @@ class DocumentInfo:
 
     def _get_elements_df(self, etree_root):
 
-        df = pd.DataFrame(columns=["ID", "PARENT_ID", "ETREE_NODE", "TAG_NAME", "CONTENT"])
+        df = pd.DataFrame(columns=["ELEMENT_ID", "PARENT_ID", "ETREE_NODE", "TAG", "CONTENT"])
 
         for node in etree_root.iter():
             df_row_dict = {
                 "PARENT_ID": None,
                 "ETREE_NODE": node,
-                "TAG_NAME": node.tag,
+                "TAG": node.tag,
                 "CONTENT": node.text.strip() if node.text is not None and not node.text.isspace() else None
             }
             df = df.append(df_row_dict, ignore_index=True)
@@ -126,12 +133,12 @@ class DocumentInfo:
         df["PARENT_ID"] = df["ETREE_NODE"].apply(lambda node: self._get_parent_index_from_etree_node(df, node)) \
                                           .astype("Int64")
 
-        df["ID"] = df.index
+        df["ELEMENT_ID"] = df.index
         return df
 
     def _get_attributes_df(self, elements_df):
 
-        df = pd.DataFrame(columns=["ID", "ELEMENT_ID", "NAME", "VALUE"])
+        df = pd.DataFrame(columns=["ATTRIBUTE_ID", "ELEMENT_ID", "NAME", "VALUE"])
 
         for element_index, element_row in elements_df.iterrows():
             for name, value in element_row["ETREE_NODE"].attrib.items():
@@ -142,7 +149,7 @@ class DocumentInfo:
                 }
                 df = df.append(df_row_dict, ignore_index=True)
 
-        df["ID"] = df.index
+        df["ATTRIBUTE_ID"] = df.index
         return df
 
     def _get_parent_index_from_etree_node(self, df, node):
@@ -159,12 +166,12 @@ class DocumentInfo:
     # def _get_element(self, id):
     #     if id is None:
     #         return None
-    #     element_row = self._dataframes["ELEMENTS"].iloc[id]
-    #     name = element_row["TAG_NAME"]
+    #     element_row = self._dataframes["ELEMENT"].iloc[id]
+    #     name = element_row["TAG"]
     #     content = element_row["CONTENT"]
-    #     attribute_rows = self._dataframes["ATTRIBUTES"][self._dataframes["ATTRIBUTES"]["ELEMENT_ID"] == id]
+    #     attribute_rows = self._dataframes["ATTRIBUTE"][self._dataframes["ATTRIBUTE"]["ELEMENT_ID"] == id]
     #     attributes = {row["NAME"]: row["VALUE"] for i, row in attribute_rows.iterrows()}
-    #     child_indeces = self._dataframes["ELEMENTS"][self._dataframes["ELEMENTS"]["PARENT_ID"] == id].index.tolist()
+    #     child_indeces = self._dataframes["ELEMENT"][self._dataframes["ELEMENT"]["PARENT_ID"] == id].index.tolist()
     #     children = [self._get_element(child_id) for child_id in child_indeces]
     #     element = ElementInfo(id, name, attributes, children)
     #     for child in element.children():
