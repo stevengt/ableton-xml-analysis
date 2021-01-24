@@ -1,4 +1,6 @@
 
+import os
+
 import pandas as pd
 from pandasql import sqldf
 
@@ -124,6 +126,129 @@ class DocumentInfo:
             grouped_elements_info[val] = elements_info_list
 
         return grouped_elements_info
+
+    def save_as_nested_files(self, root_directory_path="root"):
+        """
+        Saves the XML document in a specially formatted hierarchy of files
+        representing the contents of the XML.
+
+        # Each directory will be named with a number N, such that the
+        # directory represents the N'th child element of its parent.
+
+        Each directory will contain these files:
+            - "tag": Contains the name of the element's tag
+            - "attributes": Contains all of the elements attributes, as
+               they appear inline within the XML.
+
+        Each directory may or may not contain:
+            - Nested directories representing child XML elements
+            - A file named "contents", containing the contents of the XML element.
+        """
+
+        # Get a list of lists that each represent a full directory path.
+        directory_paths = self._get_directory_paths()
+        for directory_path in directory_paths:
+            os.makedirs(
+                os.path.join(root_directory_path, *directory_path),
+                exist_ok=True
+            )
+            cur_directory = root_directory_path
+            for directory in directory_path:
+                cur_element_id = directory
+                cur_directory = os.path.join(cur_directory, cur_element_id)
+                tag, content, attributes = self.get_tag_attributes_and_contents(cur_element_id)
+                tag_file_path = os.path.join(cur_directory, "tag")
+                contents_file_path = os.path.join(cur_directory, "contents")
+                attributes_file_path = os.path.join(cur_directory, "attributes")
+
+                with open(tag_file_path, "w") as tag_file:
+                    tag_file.write(tag)
+                if content is not None:
+                    with open(contents_file_path) as content_file:
+                        content_file.write(content)
+                with open(attributes_file_path, "w") as attribute_file:
+                    attribute_file.write(attributes)
+
+    def get_tag_attributes_and_contents(self, element_id):
+        """
+        Return three strings containing an element's tag name,
+        contents, and attributes as they appear inline in XML.
+        """
+        query = f"""
+                SELECT
+                    TAG, CONTENT, NAME, VALUE
+                FROM
+                         ELEMENT E
+                    JOIN ATTRIBUTE A
+                         ON E.ELEMENT_ID=A.ELEMENT_ID
+                WHERE
+                    E.ELEMENT_ID='{element_id}'
+                """
+        results = self.query(query)
+        tag = results["TAG"].iloc[0]
+        content = results["CONTENT"].iloc[0]
+        attributes = ""
+        for i, row in results.iterrows():
+            attributes += " "
+            attributes += f'''{row["NAME"]}="{row["VALUE"]}"'''
+        return tag, content, attributes
+
+    def _get_directory_paths(self):
+        paths = []
+        list_of_element_ids_with_no_children = self.get_list_of_element_ids_with_no_children()
+        for element_id in list_of_element_ids_with_no_children:
+            cur_path = [element_id]
+            cur_element_id = element_id
+            while self.has_parent_element(cur_element_id):
+                parent_element_id = self.get_parent_element_id(cur_element_id)
+                cur_path.append(parent_element_id)
+                cur_element_id = parent_element_id
+            cur_path.reverse()
+            paths.append(cur_path)
+        return paths
+
+    def get_list_of_element_ids_with_no_children(self):
+        list_of_element_ids_with_no_children = []
+        min_element_id, max_element_id = self.get_min_and_max_element_id()
+        for element_id in range(min_element_id, max_element_id + 1):
+            if not self.has_child_element(element_id):
+                list_of_element_ids_with_no_children.append(element_id)
+        return list_of_element_ids_with_no_children
+
+    def get_list_of_child_element_ids(self, element_id):
+        query = f"""
+                SELECT ELEMENT_ID
+                FROM ELEMENT
+                WHERE PARENT_ID='{element_id}'
+                """
+        return list(self.query(query)["ELEMENT_ID"])
+
+    def get_parent_element_id(self, element_id):
+        query = f"""
+                SELECT PARENT_ID
+                FROM ELEMENT
+                WHERE ELEMENT_ID='{element_id}'
+                """
+        return list(self.query(query)["PARENT_ID"])[0]
+
+    def get_min_and_max_element_id(self):
+        query = """
+                SELECT
+                    MIN(ELEMENT_ID) AS MIN,
+                    MAX(ELEMENT_ID) AS MAX
+                FROM ELEMENT
+                """
+        results = self.query(query)
+        min, max = results["MIN"].iloc[0], results["MAX"].iloc[0]
+        return min, max
+
+    def has_child_element(self, element_id):
+        list_of_child_element_ids = self.get_list_of_child_element_ids(element_id)
+        return len(list_of_child_element_ids) > 0
+
+    def has_parent_element(self, element_id):
+        parent_element_id = self.get_parent_element_id(element_id)
+        return parent_element_id is not None
 
     def _get_elements_and_attributes_dataframes(self, etree_root):
         elements_df = self._get_elements_df(etree_root)
